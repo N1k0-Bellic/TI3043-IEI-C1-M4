@@ -1,0 +1,18 @@
+{
+  "name": "consultorio-m4",
+  "version": "1.0.0",
+  "description": "Módulo 4 · Consultorio veterinario · Sistema municipal de tenencia responsable de mascotas (TI3043)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "ALLOW_MEMORY=1 node --watch src/index.js",
+    "test": "node test/e2e.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mongodb": "^6.10.0"
+  },
+  "license": "MIT"
+}
