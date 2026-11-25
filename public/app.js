@@ -14,6 +14,7 @@ const estado = {
   reprogFecha: new Date().toISOString().slice(0, 10),
   reprogHora: '',
   animalBuscado: null,
+  responsableSeleccionado: '',
   historial: [],
   mensaje: null
 };
@@ -59,6 +60,11 @@ async function api(ruta, { metodo = 'GET', cuerpo } = {}) {
   return datos;
 }
 
+function obtenerResponsableAnimal(animal) {
+  if (!animal) return '';
+  return animal.comunitario ? (animal.responsableRut || '') : (animal.tutorRut || '');
+}
+
 function renderSesion() {
   const box = $('sesion');
   limpiar(box);
@@ -76,6 +82,7 @@ function renderSesion() {
       estado.citas = [];
       estado.citaActiva = null;
       estado.animalBuscado = null;
+      estado.responsableSeleccionado = '';
       estado.historial = [];
       estado.mensaje = null;
       render();
@@ -129,11 +136,14 @@ async function buscarAnimal(codigo) {
   if (!limpio) return avisar('error', 'Ingresa un identificador o chip de animal.');
   try {
     const data = await api(`/api/consultorio/animales/${encodeURIComponent(limpio)}`);
-    estado.animalBuscado = data.animal || data;
+    const animal = data.animal || data;
+    estado.animalBuscado = animal;
+    estado.responsableSeleccionado = obtenerResponsableAnimal(animal);
     estado.historial = Array.isArray(data.historial) ? data.historial : [];
     render();
   } catch (e) {
     estado.animalBuscado = null;
+    estado.responsableSeleccionado = '';
     estado.historial = [];
     avisar('error', e.message);
   }
@@ -187,6 +197,7 @@ async function registrarAtencion(ev) {
   const tratamiento = $('inp-tratamiento').value.trim();
   const observaciones = $('inp-observaciones').value.trim();
   const animalId = estado.animalBuscado?.id || estado.animalBuscado?._id || estado.citaActiva?.animalId || $('inp-animal')?.value.trim();
+  const responsableRut = $('sel-responsable')?.value.trim() || estado.responsableSeleccionado || '';
 
   if (!animalId) return avisar('error', 'Primero busca o selecciona un animal.');
   if (!diagnostico) return avisar('error', 'El diagnóstico es obligatorio para registrar la atención.');
@@ -194,6 +205,7 @@ async function registrarAtencion(ev) {
   const cuerpo = {
     animalId,
     citaId: estado.citaActiva?.id || estado.citaActiva?._id || undefined,
+    responsableRut: responsableRut || undefined,
     diagnostico,
     tratamiento,
     observaciones
@@ -253,6 +265,7 @@ function renderAgenda(main) {
           estado.citaActiva = c;
           estado.reprogFecha = c.fecha || estado.fecha;
           estado.reprogHora = c.hora || '';
+          estado.responsableSeleccionado = c.responsableRut || c.tutorRut || '';
           estado.vista = 'atencion';
           if (c.animalId) buscarAnimal(c.animalId);
           else render();
@@ -265,6 +278,7 @@ function renderAgenda(main) {
           estado.citaActiva = c;
           estado.reprogFecha = c.fecha || estado.fecha;
           estado.reprogHora = c.hora || '';
+          estado.responsableSeleccionado = c.responsableRut || c.tutorRut || '';
           estado.vista = 'atencion';
           if (c.animalId) buscarAnimal(c.animalId);
           else render();
@@ -287,6 +301,72 @@ function renderAgenda(main) {
     sec.appendChild(tabla);
   }
   main.appendChild(sec);
+}
+
+function renderFichaAnimal(sec) {
+  if (!estado.animalBuscado) return;
+  const a = estado.animalBuscado;
+  const esComunitario = Boolean(a.comunitario);
+  const ficha = texto('div', '', { class: 'ficha' });
+
+  const titulo = texto('div', '', { class: 'barra-superior' });
+  titulo.appendChild(texto('h3', a.nombre || `Animal ${a.id || ''}`));
+  titulo.appendChild(texto('span', esComunitario ? 'Animal comunitario' : 'Animal con tutor', {
+    class: esComunitario ? 'badge estado-comunitario' : 'badge'
+  }));
+  ficha.appendChild(titulo);
+
+  ficha.appendChild(texto('p', `Especie: ${a.especie || '-'} · Estado: ${a.estado || '-'}`));
+
+  if (esComunitario) {
+    ficha.appendChild(texto(
+      'p',
+      a.responsableRut
+        ? `Responsable comunitario registrado: ${a.responsableRut}`
+        : 'Sin responsable comunitario registrado en el M1'
+    ));
+  } else {
+    ficha.appendChild(texto('p', `Tutor registrado: ${a.tutorRut || 'No registrado'}`));
+  }
+
+  const opciones = [];
+  if (a.responsableRut) opciones.push({ valor: a.responsableRut, etiqueta: `Responsable registrado (${a.responsableRut})` });
+  if (a.tutorRut && a.tutorRut !== a.responsableRut) opciones.push({ valor: a.tutorRut, etiqueta: `Tutor registrado (${a.tutorRut})` });
+  if (Array.isArray(a.responsables)) {
+    for (const r of a.responsables) {
+      const rut = typeof r === 'string' ? r : r?.rut;
+      if (rut && !opciones.some((o) => o.valor === rut)) {
+        opciones.push({ valor: rut, etiqueta: typeof r === 'string' ? rut : `${r.nombre || rut} (${rut})` });
+      }
+    }
+  }
+
+  ficha.appendChild(texto('label', esComunitario ? 'Responsable comunitario' : 'Tutor / Responsable', { for: 'sel-responsable' }));
+  const filaResp = texto('div', '', { class: 'fila-controles' });
+
+  if (opciones.length) {
+    const select = texto('select', '', {
+      id: 'sel-responsable',
+      onchange: (ev) => { estado.responsableSeleccionado = ev.target.value; }
+    });
+    for (const op of opciones) {
+      const opt = texto('option', op.etiqueta, { value: op.valor });
+      if (op.valor === estado.responsableSeleccionado) opt.selected = true;
+      select.appendChild(opt);
+    }
+    filaResp.appendChild(select);
+  } else {
+    filaResp.appendChild(texto('input', '', {
+      id: 'sel-responsable',
+      type: 'text',
+      placeholder: 'RUT del responsable (ej. 12.345.678-9)',
+      value: estado.responsableSeleccionado || '',
+      onchange: (ev) => { estado.responsableSeleccionado = ev.target.value; }
+    }));
+  }
+
+  ficha.appendChild(filaResp);
+  sec.appendChild(ficha);
 }
 
 function renderAtencion(main) {
@@ -356,14 +436,7 @@ function renderAtencion(main) {
   formBusq.appendChild(texto('button', 'Buscar animal', { type: 'submit', class: 'primario' }));
   sec.appendChild(formBusq);
 
-  if (estado.animalBuscado) {
-    const a = estado.animalBuscado;
-    const ficha = texto('div', '', { class: 'ficha' });
-    ficha.appendChild(texto('h3', a.nombre || `Animal ${a.id || ''}`));
-    ficha.appendChild(texto('p', `Especie: ${a.especie || '-'} · Estado: ${a.estado || '-'}`));
-    ficha.appendChild(texto('p', `Responsable / Tutor: ${a.responsableRut || a.tutorRut || 'No registrado'}`));
-    sec.appendChild(ficha);
-  }
+  renderFichaAnimal(sec);
 
   const formAt = texto('form', '', { class: 'ficha', onsubmit: registrarAtencion });
   formAt.appendChild(texto('h3', 'Registrar atención clínica'));
