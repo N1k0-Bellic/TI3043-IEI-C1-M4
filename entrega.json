@@ -6,17 +6,17 @@
   "repositorio": "https://github.com/COMPLETAR/COMPLETAR",
   "taiga": "https://tree.taiga.io/project/ti3043-iei-c1-m4",
   "integrantes": [
-    { "nombre": "Nicolas Diaz", "github": "COMPLETAR", "taiga": "COMPLETAR", "rol": "PO" },
-    { "nombre": "Patricio Lagos", "github": "COMPLETAR", "taiga": "COMPLETAR", "rol": "SM" },
-    { "nombre": "Andru Colque", "github": "COMPLETAR", "taiga": "COMPLETAR", "rol": "Analista" },
-    { "nombre": "Natalie Alveal", "github": "COMPLETAR", "taiga": "COMPLETAR", "rol": "Arquitecto" },
+    { "nombre": "Nicolas Diaz", "github": "N1k0-Bellic", "taiga": "Nicolas Diaz", "rol": "PO" },
+    { "nombre": "Patricio Lagos", "github": "patrolox468", "taiga": "Patricio Lagos", "rol": "SM" },
+    { "nombre": "Andru Colque", "github": "AndruColque", "taiga": "Andru Colque", "rol": "Analista" },
+    { "nombre": "Natalie Alveal", "github": "natiee2", "taiga": "Natalie Alveal", "rol": "Arquitecto" },
     { "nombre": "Hender Jimenez", "github": "COMPLETAR", "taiga": "COMPLETAR", "rol": "Calidad" }
   ],
   "historias": [
     {
       "id": "CV-01",
       "titulo": "Agendar una cita para mi animal en un bloque libre de 30 minutos",
-      "responsable": "COMPLETAR (github de Nicolas)",
+      "responsable": "natiee2 (github de Natalie)",
       "verificacion": {
         "metodo": "POST",
         "ruta": "/api/consultorio/citas",
@@ -28,7 +28,7 @@
     {
       "id": "CV-02",
       "titulo": "Cancelar mi cita hasta 24 horas antes (rechaza fuera de plazo)",
-      "responsable": "COMPLETAR (github de Patricio)",
+      "responsable": "AndruColque (github de Andru)",
       "verificacion": {
         "metodo": "PATCH",
         "ruta": "/api/consultorio/citas/C-DEMO-0001/estado",
@@ -40,7 +40,7 @@
     {
       "id": "CV-03",
       "titulo": "Registrar la atención y marcar la cita como atendida (solo veterinario)",
-      "responsable": "COMPLETAR (github de Andru)",
+      "responsable": "patrolox468 (github de Patricio)",
       "verificacion": {
         "metodo": "PATCH",
         "ruta": "/api/consultorio/citas/C-DEMO-0001/estado",
@@ -52,7 +52,7 @@
     {
       "id": "CV-04",
       "titulo": "Consultar el historial clínico de mis animales",
-      "responsable": "COMPLETAR (github de Natalie)",
+      "responsable": "Completar (github de Hender)",
       "verificacion": {
         "metodo": "GET",
         "ruta": "/api/consultorio/animales/SIM-000001/historial",
@@ -63,7 +63,7 @@
     {
       "id": "CV-05",
       "titulo": "Agendar con el RUT del responsable de un animal comunitario",
-      "responsable": "COMPLETAR (github de Hender)",
+      "responsable": "N1k0-Bellic (github de Nicolas)",
       "verificacion": {
         "metodo": "POST",
         "ruta": "/api/consultorio/citas",
@@ -75,7 +75,7 @@
     {
       "id": "CV-06",
       "titulo": "Marcar automáticamente como ausentes las citas sin atención",
-      "responsable": "COMPLETAR (github de quien la tome)",
+      "responsable": "patrolox468 (github de Patricio)",
       "verificacion": {
         "metodo": "POST",
         "ruta": "/api/consultorio/citas/ausentes",
