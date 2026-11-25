@@ -187,6 +187,27 @@
       estado.citas ? h('p', { class: 'ayuda' }, `${estado.citas.total} cita(s) en total.`) : null);
   }
 
+  // ---------- historial clínico (CV-04) ----------
+  function vistaHistorial() {
+    const animal = h('input', { id: 'animalH', placeholder: 'SIM-000001', maxlength: '40' });
+    const datos = estado.historial;
+    return h('section', { class: 'tarjeta' },
+      h('h2', {}, 'Historial clínico'),
+      h('div', { class: 'fila' },
+        h('div', {}, h('label', { for: 'animalH' }, 'Identificador del animal'), animal),
+        h('button', { onclick: () => accion(async () => {
+          const d = await api('GET', `/api/consultorio/animales/${encodeURIComponent(animal.value.trim())}/historial?limit=50`);
+          estado.historial = { animalId: animal.value.trim(), ...d };
+        }) }, 'Consultar')),
+      datos ? (datos.datos.length === 0
+        ? h('p', { class: 'ayuda' }, `${datos.animalId} no tiene atenciones registradas.`)
+        : datos.datos.map((f) => h('div', { class: 'ficha' },
+          h('strong', {}, `${fechaHora(f.creada)} · cita ${f.citaId}`),
+          h('p', {}, h('b', {}, 'Diagnóstico: '), f.diagnostico),
+          h('p', {}, h('b', {}, 'Tratamiento: '), f.tratamiento),
+          f.receta ? h('p', {}, h('b', {}, 'Receta: '), f.receta) : null))) : null);
+  }
+
   // ---------- pantalla ----------
   function dibujar() {
     const cab = document.getElementById('sesion');
@@ -204,6 +225,7 @@
     if (!sesion) { app.append(vistaLogin()); return; }
     if (['vecino', 'comunitario', 'funcionario'].includes(sesion.perfil)) app.append(vistaAgendar());
     app.append(vistaCitas());
+    if (['vecino', 'comunitario', 'veterinario'].includes(sesion.perfil)) app.append(vistaHistorial());
     if (!['vecino', 'comunitario', 'funcionario', 'veterinario'].includes(sesion.perfil)) {
       app.append(h('p', { class: 'ayuda' }, 'Su perfil solo puede consultar la agenda.'));
     }
