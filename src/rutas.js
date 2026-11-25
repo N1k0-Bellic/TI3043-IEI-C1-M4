@@ -51,6 +51,16 @@ function crearRutas(ctx) {
     }
   }
 
+  // RF-06 / CV-06: pasa a "ausente" toda cita activa cuya hora terminó. Se ejecuta con un reloj interno
+  // (index.js) y también antes de leer o modificar citas, para que nunca se vea un estado desactualizado.
+  let ultimoBarrido = 0;
+  async function barrido(forzar = false) {
+    const ahora = ctx.ahora().getTime();
+    if (!forzar && ahora - ultimoBarrido < 5000) return 0;
+    ultimoBarrido = ahora;
+    return dao.marcarAusentes(iso(new Date(ahora)));
+  }
+
   function idDe(valor, campo) {
     if (typeof valor !== 'string' || !RE_ID.test(valor)) {
       throw new HttpError(400, 'ID_INVALIDO', `${campo} solo admite letras, números y guiones (máx. 40)`);
@@ -337,6 +347,13 @@ function crearRutas(ctx) {
     return { status: 200, body: publica(nueva) };
   }
 
+  // ---------- POST /citas/ausentes (CV-06) ----------
+  async function marcarAusentes({ usuario }) {
+    const n = await barrido(true);
+    await bitacora(usuario, 'AUSENTES_PROCESAR', `${n} citas`);
+    return { status: 200, body: { marcadas: n, hora: iso(ctx.ahora()) } };
+  }
+
   // ---------- GET /animales/{animalId}/historial (CV-04) ----------
   async function historial({ usuario, token, params, query }) {
     const animalId = idDe(params.animalId, 'animalId');
@@ -363,11 +380,12 @@ function crearRutas(ctx) {
 
   const P = '/api/consultorio';
   return {
-    barrido: async () => 0, // provisional: el barrido real llega con las ausentes automáticas
+    barrido,
     rutas: [
       { metodo: 'GET', ruta: `${P}/horarios`, perfiles: TODOS, manejador: horarios },
       { metodo: 'POST', ruta: `${P}/citas`, perfiles: SOLICITANTES, manejador: crearCita },
       { metodo: 'GET', ruta: `${P}/citas`, perfiles: TODOS, manejador: listarCitas },
+      { metodo: 'POST', ruta: `${P}/citas/ausentes`, perfiles: ['veterinario', 'jefatura', 'admin'], manejador: marcarAusentes },
       { metodo: 'GET', ruta: `${P}/citas/:citaId`, perfiles: TODOS, manejador: obtenerCita },
       { metodo: 'PATCH', ruta: `${P}/citas/:citaId/estado`, perfiles: SOLICITANTES, manejador: cambiarEstado },
       { metodo: 'PATCH', ruta: `${P}/citas/:citaId/horario`, perfiles: SOLICITANTES, manejador: reagendar },
