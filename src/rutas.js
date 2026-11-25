@@ -86,6 +86,11 @@ function crearRutas(ctx) {
     return { inicio, fin: iso(new Date(d.getTime() + T.MINUTOS_BLOQUE * MIN)) };
   }
 
+  /** Tutor (o responsable, si es comunitario) del animal según el M1. */
+  function responsableDe(animal) {
+    return animal.comunitario ? animal.responsableRut : animal.tutorRut;
+  }
+
   // ---------- GET /horarios ----------
   async function horarios({ query }) {
     const fecha = query.get('fecha');
@@ -111,7 +116,7 @@ function crearRutas(ctx) {
     return { status: 200, body: respuestaPaginada(libres.slice(skip, skip + limit), libres.length, page, limit) };
   }
 
-  // ---------- POST /citas (CV-01) ----------
+  // ---------- POST /citas (CV-01 y CV-05) ----------
   async function crearCita({ usuario, token, body }) {
     // 1) Validar entradas (antes de llamar a ningún otro servicio)
     const animalId = texto(body.animalId, 'animalId', { obligatorio: true, max: 40 });
@@ -127,7 +132,11 @@ function crearRutas(ctx) {
     if (animal.estado === 'fallecido') {
       throw new HttpError(409, 'ANIMAL_FALLECIDO', `El animal ${animalId} figura como fallecido: no se puede agendar`);
     }
-    const responsable = animal.tutorRut;
+    // RF-08: animal comunitario -> agenda su responsable adulto registrado en el M1
+    if (animal.comunitario && !animal.responsableRut) {
+      throw new HttpError(409, 'RESPONSABLE_NO_REGISTRADO', 'El animal comunitario no tiene responsable registrado en el M1: no se agenda');
+    }
+    const responsable = responsableDe(animal);
     if (!responsable) {
       throw new HttpError(409, 'TUTOR_NO_REGISTRADO', 'El animal no tiene tutor registrado en el M1');
     }
