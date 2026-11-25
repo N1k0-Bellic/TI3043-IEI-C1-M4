@@ -73,6 +73,8 @@ function renderSesion() {
       estado.usuario = null;
       estado.citas = [];
       estado.citaActiva = null;
+      estado.animalBuscado = null;
+      estado.historial = [];
       estado.mensaje = null;
       render();
     }
@@ -148,6 +150,33 @@ async function cambiarEstadoCita(cita, accion) {
       msg: accion === 'ausente' ? 'Cita marcada como ausente.' : 'Atención de cita completada.'
     };
     await cargarAgenda();
+  } catch (e) {
+    avisar('error', e.message);
+  }
+}
+
+async function registrarAtencion(ev) {
+  ev.preventDefault();
+  const diagnostico = $('inp-diagnostico').value.trim();
+  const tratamiento = $('inp-tratamiento').value.trim();
+  const observaciones = $('inp-observaciones').value.trim();
+  const animalId = estado.animalBuscado?.id || estado.animalBuscado?._id || estado.citaActiva?.animalId || $('inp-animal')?.value.trim();
+
+  if (!animalId) return avisar('error', 'Primero busca o selecciona un animal.');
+  if (!diagnostico) return avisar('error', 'El diagnóstico es obligatorio para registrar la atención.');
+
+  const cuerpo = {
+    animalId,
+    citaId: estado.citaActiva?.id || estado.citaActiva?._id || undefined,
+    diagnostico,
+    tratamiento,
+    observaciones
+  };
+
+  try {
+    await api('/api/consultorio/atenciones', { metodo: 'POST', cuerpo });
+    estado.mensaje = { tipo: 'ok', msg: 'Atención clínica registrada correctamente.' };
+    await buscarAnimal(animalId);
   } catch (e) {
     avisar('error', e.message);
   }
@@ -271,6 +300,50 @@ function renderAtencion(main) {
     ficha.appendChild(texto('p', `Responsable / Tutor: ${a.responsableRut || a.tutorRut || 'No registrado'}`));
     sec.appendChild(ficha);
   }
+
+  const formAt = texto('form', '', { class: 'ficha', onsubmit: registrarAtencion });
+  formAt.appendChild(texto('h3', 'Registrar atención clínica'));
+
+  formAt.appendChild(texto('label', 'Diagnóstico', { for: 'inp-diagnostico' }));
+  formAt.appendChild(texto('input', '', {
+    id: 'inp-diagnostico',
+    type: 'text',
+    placeholder: 'Diagnóstico clínico',
+    required: 'required'
+  }));
+
+  formAt.appendChild(texto('label', 'Tratamiento / Indicaciones', { for: 'inp-tratamiento' }));
+  formAt.appendChild(texto('input', '', {
+    id: 'inp-tratamiento',
+    type: 'text',
+    placeholder: 'Medicamentos o indicaciones'
+  }));
+
+  formAt.appendChild(texto('label', 'Observaciones', { for: 'inp-observaciones' }));
+  formAt.appendChild(texto('input', '', {
+    id: 'inp-observaciones',
+    type: 'text',
+    placeholder: 'Notas adicionales'
+  }));
+
+  formAt.appendChild(texto('button', 'Guardar atención', { type: 'submit', class: 'primario' }));
+  sec.appendChild(formAt);
+
+  const boxHist = texto('div', '', { class: 'ficha' });
+  boxHist.appendChild(texto('h3', 'Historial de consultas'));
+  if (!estado.historial.length) {
+    boxHist.appendChild(texto('p', 'Sin consultas registradas para este animal.', { class: 'suave' }));
+  } else {
+    for (const item of estado.historial) {
+      const fila = texto('div', '', { class: 'ficha' });
+      const fechaStr = item.fecha || item.creadoEn || item.createdAt || 'Fecha no indicada';
+      fila.appendChild(texto('p', `${fechaStr} — Diagnóstico: ${item.diagnostico || '-'}`));
+      if (item.tratamiento) fila.appendChild(texto('p', `Tratamiento: ${item.tratamiento}`, { class: 'suave' }));
+      if (item.observaciones) fila.appendChild(texto('p', `Observaciones: ${item.observaciones}`, { class: 'suave' }));
+      boxHist.appendChild(fila);
+    }
+  }
+  sec.appendChild(boxHist);
 
   main.appendChild(sec);
 }
