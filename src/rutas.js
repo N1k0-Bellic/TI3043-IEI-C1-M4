@@ -91,6 +91,10 @@ function crearRutas(ctx) {
     return animal.comunitario ? animal.responsableRut : animal.tutorRut;
   }
 
+  function esSuya(cita, usuario) {
+    return cita.solicitanteRut.toUpperCase() === usuario.rut.toUpperCase();
+  }
+
   // ---------- GET /horarios ----------
   async function horarios({ query }) {
     const fecha = query.get('fecha');
@@ -210,12 +214,57 @@ function crearRutas(ctx) {
     return { status: 201, body: publica(cita) };
   }
 
+  // ---------- GET /citas ----------
+  async function listarCitas({ usuario, query }) {
+    await barrido();
+    const { page, limit, skip } = paginacion(query);
+    const filtro = {};
+    const estado = query.get('estado');
+    if (estado) {
+      if (!ESTADOS.includes(estado)) throw new HttpError(400, 'ESTADO_INVALIDO', `estado debe ser uno de: ${ESTADOS.join(', ')}`);
+      filtro.estado = estado;
+    }
+    const fecha = query.get('fecha');
+    if (fecha) {
+      if (!T.fechaValida(fecha)) throw new HttpError(400, 'FECHA_INVALIDA', 'fecha debe tener formato YYYY-MM-DD');
+      filtro.desde = iso(T.localAUtc(fecha, '00:00', tz));
+      filtro.hasta = iso(T.localAUtc(T.sumaDias(fecha, 1), '00:00', tz));
+    }
+    const vet = query.get('veterinarioId');
+    if (vet) {
+      if (!RE_RUT_FILTRO.test(vet)) throw new HttpError(400, 'RUT_INVALIDO', 'veterinarioId debe ser un RUT (12345678-9)');
+      filtro.veterinarioId = vet;
+    }
+    const animalId = query.get('animalId');
+    if (animalId) filtro.animalId = idDe(animalId, 'animalId');
+
+    // RF-07: tutores y responsables solo ven sus citas; veterinario, funcionario, jefatura y admin ven la agenda general
+    if (DUENOS.includes(usuario.perfil)) filtro.solicitanteRut = usuario.rut;
+
+    const { total, datos } = await dao.listarCitas(filtro, skip, limit);
+    return { status: 200, body: respuestaPaginada(datos.map(publica), total, page, limit) };
+  }
+
+  // ---------- GET /citas/{citaId} ----------
+  async function obtenerCita({ usuario, params }) {
+    const id = idDe(params.citaId, 'citaId');
+    await barrido();
+    const cita = await dao.obtenerCita(id);
+    if (!cita) throw new HttpError(404, 'CITA_NO_ENCONTRADA', `No existe la cita ${id}`);
+    if (DUENOS.includes(usuario.perfil) && !esSuya(cita, usuario)) {
+      throw new HttpError(403, 'PERFIL_NO_AUTORIZADO', 'Esa cita no es suya');
+    }
+    return { status: 200, body: publica(cita) };
+  }
+
   const P = '/api/consultorio';
   return {
     barrido: async () => 0, // provisional: el barrido real llega con las ausentes automáticas
     rutas: [
       { metodo: 'GET', ruta: `${P}/horarios`, perfiles: TODOS, manejador: horarios },
-      { metodo: 'POST', ruta: `${P}/citas`, perfiles: SOLICITANTES, manejador: crearCita }
+      { metodo: 'POST', ruta: `${P}/citas`, perfiles: SOLICITANTES, manejador: crearCita },
+      { metodo: 'GET', ruta: `${P}/citas`, perfiles: TODOS, manejador: listarCitas },
+      { metodo: 'GET', ruta: `${P}/citas/:citaId`, perfiles: TODOS, manejador: obtenerCita }
     ]
   };
 }
