@@ -307,6 +307,36 @@ function crearRutas(ctx) {
     return { status: 200, body: publica(nueva) };
   }
 
+  // ---------- PATCH /citas/{citaId}/horario (reagendar) ----------
+  async function reagendar({ usuario, params, body }) {
+    const id = idDe(params.citaId, 'citaId');
+    const nuevo = validarBloque(body.inicio);
+    await barrido();
+    const cita = await dao.obtenerCita(id);
+    if (!cita) throw new HttpError(404, 'CITA_NO_ENCONTRADA', `No existe la cita ${id}`);
+    if (DUENOS.includes(usuario.perfil) && !esSuya(cita, usuario)) {
+      throw new HttpError(403, 'PERFIL_NO_AUTORIZADO', 'Esa cita no es suya');
+    }
+    if (cita.estado !== 'agendada') {
+      throw new HttpError(409, 'TRANSICION_INVALIDA', 'Solo se puede reagendar una cita en estado "agendada"');
+    }
+    const ahora = ctx.ahora();
+    if (new Date(cita.inicio).getTime() - ahora.getTime() < cfg.plazoCancelacionHoras * 60 * MIN) {
+      throw new HttpError(409, 'REAGENDAMIENTO_FUERA_DE_PLAZO', `Solo se puede reagendar con al menos ${cfg.plazoCancelacionHoras} horas de anticipación`);
+    }
+    let nueva;
+    try {
+      nueva = await dao.actualizarCita(id, ['agendada'], { inicio: nuevo.inicio, fin: nuevo.fin },
+        { estado: 'agendada', fecha: iso(ahora), por: usuario.rut, nota: 'reagendada' }, iso(ahora));
+    } catch (e) {
+      if (e instanceof DuplicadoError) throw new HttpError(409, 'BLOQUE_OCUPADO', 'Ese bloque ya tiene una cita activa');
+      throw e;
+    }
+    if (!nueva) throw new HttpError(409, 'CONFLICTO_DE_ESTADO', 'La cita cambió mientras se procesaba; vuelva a consultarla');
+    await bitacora(usuario, 'CITA_REAGENDAR', id);
+    return { status: 200, body: publica(nueva) };
+  }
+
   const P = '/api/consultorio';
   return {
     barrido: async () => 0, // provisional: el barrido real llega con las ausentes automáticas
@@ -315,7 +345,8 @@ function crearRutas(ctx) {
       { metodo: 'POST', ruta: `${P}/citas`, perfiles: SOLICITANTES, manejador: crearCita },
       { metodo: 'GET', ruta: `${P}/citas`, perfiles: TODOS, manejador: listarCitas },
       { metodo: 'GET', ruta: `${P}/citas/:citaId`, perfiles: TODOS, manejador: obtenerCita },
-      { metodo: 'PATCH', ruta: `${P}/citas/:citaId/estado`, perfiles: SOLICITANTES, manejador: cambiarEstado }
+      { metodo: 'PATCH', ruta: `${P}/citas/:citaId/estado`, perfiles: SOLICITANTES, manejador: cambiarEstado },
+      { metodo: 'PATCH', ruta: `${P}/citas/:citaId/horario`, perfiles: SOLICITANTES, manejador: reagendar }
     ]
   };
 }
