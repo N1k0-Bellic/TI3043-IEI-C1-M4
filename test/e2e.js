@@ -320,6 +320,26 @@ function diaHabil(dias, tz) {
     assert.ok(f.datos.datos.every((c) => !('diagnostico' in c)), 'la agenda no debe traer datos clínicos');
   });
 
+  console.log('\nCV-06 Ausentes automáticas (RF-06, RN-08)');
+  await prueba('cita activa vencida pasa a ausente; atendida y cancelada no cambian', async () => {
+    const pasado = new Date(Date.now() - 3 * 3600000);
+    const base = { animalId: 'SIM-000001', solicitanteRut: '11111111-1', veterinarioId: cfg.veterinarios[1], motivo: '', creada: iso(new Date()), actualizada: iso(new Date()), historial: [] };
+    await dao.insertarCita({ ...base, citaId: 'C-VENCIDA', inicio: iso(pasado), fin: iso(new Date(pasado.getTime() + 1800000)), estado: 'confirmada', activa: true });
+    const p2 = new Date(pasado.getTime() - 3600000);
+    await dao.insertarCita({ ...base, citaId: 'C-OLD-ATENDIDA', inicio: iso(p2), fin: iso(new Date(p2.getTime() + 1800000)), estado: 'atendida', activa: false });
+    await dao.insertarCita({ ...base, citaId: 'C-OLD-CANCELADA', inicio: iso(new Date(p2.getTime() - 3600000)), fin: iso(new Date(p2.getTime() - 1800000)), estado: 'cancelada', activa: false });
+    esperar(await pedir('POST', '/api/consultorio/citas/ausentes', 'tok-vecino1'), 403);
+    esperar(await pedir('POST', '/api/consultorio/citas/ausentes', 'tok-func'), 403);
+    const r = await pedir('POST', '/api/consultorio/citas/ausentes', 'tok-vet');
+    esperar(r, 200);
+    assert.ok(r.datos.marcadas >= 1);
+    assert.strictEqual((await pedir('GET', '/api/consultorio/citas/C-VENCIDA', 'tok-vet')).datos.estado, 'ausente');
+    assert.strictEqual((await pedir('GET', '/api/consultorio/citas/C-OLD-ATENDIDA', 'tok-vet')).datos.estado, 'atendida');
+    assert.strictEqual((await pedir('GET', '/api/consultorio/citas/C-OLD-CANCELADA', 'tok-vet')).datos.estado, 'cancelada');
+    const otra = await pedir('POST', '/api/consultorio/citas/ausentes', 'tok-vet');
+    assert.strictEqual(otra.datos.marcadas, 0, 'debe ser idempotente');
+  });
+
   console.log(`\n${ok} pruebas OK, ${fallos} con fallos`);
   app.close(); nucleo.close(); m1.close();
   process.exit(fallos ? 1 : 0);
