@@ -340,6 +340,24 @@ function diaHabil(dias, tz) {
     assert.strictEqual(otra.datos.marcadas, 0, 'debe ser idempotente');
   });
 
+  console.log('\nVerificaciones declaradas en entrega.json');
+  const entrega = require('../entrega.json');
+  const tokenPorPerfil = { vecino: 'tok-vecino1', comunitario: 'tok-com1', veterinario: 'tok-vet', funcionario: 'tok-func' };
+  for (const hu of entrega.historias) {
+    await prueba(`${hu.id} ${hu.verificacion.metodo} ${hu.verificacion.ruta} (${hu.verificacion.perfil}) -> ${hu.verificacion.esperado}`, async () => {
+      const v = hu.verificacion;
+      const r = await pedir(v.metodo, v.ruta, tokenPorPerfil[v.perfil], v.cuerpo);
+      assert.strictEqual(r.status, v.esperado, `llegó ${r.status} ${JSON.stringify(r.datos)}`);
+    });
+  }
+  await prueba('las verificaciones se pueden repetir y dan lo mismo', async () => {
+    for (const hu of entrega.historias) {
+      const v = hu.verificacion;
+      const r = await pedir(v.metodo, v.ruta, tokenPorPerfil[v.perfil], v.cuerpo);
+      assert.strictEqual(r.status, v.esperado, `${hu.id}: llegó ${r.status}`);
+    }
+  });
+
   console.log(`\n${ok} pruebas OK, ${fallos} con fallos`);
   app.close(); nucleo.close(); m1.close();
   process.exit(fallos ? 1 : 0);
