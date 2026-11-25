@@ -267,7 +267,7 @@ function crearRutas(ctx) {
     return { status: 200, body: publica(cita) };
   }
 
-  // ---------- PATCH /citas/{citaId}/estado (CV-02) ----------
+  // ---------- PATCH /citas/{citaId}/estado (CV-02, CV-03) ----------
   async function cambiarEstado({ usuario, params, body }) {
     const id = idDe(params.citaId, 'citaId');
     const destino = body.estado;
@@ -305,16 +305,40 @@ function crearRutas(ctx) {
       }
     }
 
+    let ficha = null;
+    if (destino === 'atendida') {
+      // RF-03: no se guarda sin diagnóstico y tratamiento; la receta es opcional ("si corresponde")
+      const f = body.ficha;
+      if (f === null || typeof f !== 'object' || Array.isArray(f)) {
+        throw new HttpError(400, 'FICHA_REQUERIDA', 'Para marcar la cita como atendida se debe enviar ficha {diagnostico, tratamiento, receta?}');
+      }
+      ficha = {
+        fichaId: idUnico('F'),
+        citaId: cita.citaId,
+        animalId: cita.animalId,
+        veterinarioRut: usuario.rut,
+        diagnostico: texto(f.diagnostico, 'diagnostico', { obligatorio: true, min: 3, max: 2000 }),
+        tratamiento: texto(f.tratamiento, 'tratamiento', { obligatorio: true, min: 3, max: 2000 }),
+        receta: texto(f.receta, 'receta', { max: 2000 }),
+        creada: iso(ahora)
+      };
+    }
+
     const evento = { estado: destino, fecha: iso(ahora), por: usuario.rut };
     const cambios = { estado: destino, activa: ACTIVAS.includes(destino) };
 
+    if (ficha) await dao.insertarFicha(ficha);
     const nueva = await dao.actualizarCita(id, [cita.estado], cambios, evento, iso(ahora));
     if (!nueva) {
+      // Alguien cambió la cita en el medio: se deshace la ficha para no dejar datos huérfanos
+      if (ficha) await dao.borrarFicha(ficha.fichaId);
       throw new HttpError(409, 'CONFLICTO_DE_ESTADO', 'La cita cambió mientras se procesaba; vuelva a consultarla');
     }
 
     await bitacora(usuario, `CITA_${destino.toUpperCase()}`, id);
-    return { status: 200, body: publica(nueva) };
+    if (ficha) await bitacora(usuario, 'FICHA_CREAR', ficha.fichaId);
+    const salida = publica(nueva);
+    return { status: 200, body: ficha ? { ...salida, ficha } : salida };
   }
 
   // ---------- PATCH /citas/{citaId}/horario (reagendar) ----------
@@ -387,7 +411,7 @@ function crearRutas(ctx) {
       { metodo: 'GET', ruta: `${P}/citas`, perfiles: TODOS, manejador: listarCitas },
       { metodo: 'POST', ruta: `${P}/citas/ausentes`, perfiles: ['veterinario', 'jefatura', 'admin'], manejador: marcarAusentes },
       { metodo: 'GET', ruta: `${P}/citas/:citaId`, perfiles: TODOS, manejador: obtenerCita },
-      { metodo: 'PATCH', ruta: `${P}/citas/:citaId/estado`, perfiles: SOLICITANTES, manejador: cambiarEstado },
+      { metodo: 'PATCH', ruta: `${P}/citas/:citaId/estado`, perfiles: ['vecino', 'comunitario', 'funcionario', 'veterinario'], manejador: cambiarEstado },
       { metodo: 'PATCH', ruta: `${P}/citas/:citaId/horario`, perfiles: SOLICITANTES, manejador: reagendar },
       // RF-07: el historial clínico es solo del veterinario y del tutor/responsable (funcionario, jefatura y admin: 403)
       { metodo: 'GET', ruta: `${P}/animales/:animalId/historial`, perfiles: ['vecino', 'comunitario', 'veterinario'], manejador: historial },
