@@ -3,6 +3,7 @@
 const { cargarConfig } = require('./config');
 const { crearClienteNucleo, crearClienteM1 } = require('./clientes');
 const { crearServidor } = require('./app');
+const { sembrarDemo } = require('./semilla');
 
 async function main() {
   const cfg = cargarConfig();
@@ -20,6 +21,7 @@ async function main() {
     process.exit(1);
   }
   await dao.init();
+  if (cfg.sembrarDemo) await sembrarDemo(dao, cfg);
 
   const servidor = crearServidor({ cfg, dao, nucleo: crearClienteNucleo(cfg), m1: crearClienteM1(cfg) });
 
