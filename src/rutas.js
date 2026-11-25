@@ -354,6 +354,13 @@ function crearRutas(ctx) {
     return { status: 200, body: respuestaPaginada(datos, total, page, limit) };
   }
 
+  // ---------- GET /bitacora ----------
+  async function verBitacora({ query }) {
+    const { page, limit, skip } = paginacion(query);
+    const { total, datos } = await dao.listarBitacora(skip, limit);
+    return { status: 200, body: respuestaPaginada(datos, total, page, limit) };
+  }
+
   const P = '/api/consultorio';
   return {
     barrido: async () => 0, // provisional: el barrido real llega con las ausentes automáticas
@@ -365,7 +372,8 @@ function crearRutas(ctx) {
       { metodo: 'PATCH', ruta: `${P}/citas/:citaId/estado`, perfiles: SOLICITANTES, manejador: cambiarEstado },
       { metodo: 'PATCH', ruta: `${P}/citas/:citaId/horario`, perfiles: SOLICITANTES, manejador: reagendar },
       // RF-07: el historial clínico es solo del veterinario y del tutor/responsable (funcionario, jefatura y admin: 403)
-      { metodo: 'GET', ruta: `${P}/animales/:animalId/historial`, perfiles: ['vecino', 'comunitario', 'veterinario'], manejador: historial }
+      { metodo: 'GET', ruta: `${P}/animales/:animalId/historial`, perfiles: ['vecino', 'comunitario', 'veterinario'], manejador: historial },
+      { metodo: 'GET', ruta: `${P}/bitacora`, perfiles: ['jefatura', 'admin'], manejador: verBitacora }
     ]
   };
 }
