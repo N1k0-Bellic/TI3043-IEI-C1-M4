@@ -267,6 +267,32 @@ function diaHabil(dias, tz) {
     assert.strictEqual(r.datos.inicio, b3.inicio);
   });
 
+  console.log('\nCV-03 Atender (RF-03, RF-05, RN-08)');
+  let citaAtender;
+  await prueba('preparar cita a atender', async () => {
+    const r = await pedir('POST', '/api/consultorio/citas', 'tok-vecino1', { animalId: 'SIM-000001', motivo: 'Vacuna' });
+    esperar(r, 201);
+    citaAtender = r.datos.citaId;
+  });
+  await prueba('vecino no puede marcar atendida -> 403', async () => esperar(await pedir('PATCH', `/api/consultorio/citas/${citaAtender}/estado`, 'tok-vecino1', { estado: 'atendida' }), 403, 'PERFIL_NO_AUTORIZADO'));
+  await prueba('funcionario no puede marcar atendida -> 403', async () => esperar(await pedir('PATCH', `/api/consultorio/citas/${citaAtender}/estado`, 'tok-func', { estado: 'atendida' }), 403));
+  await prueba('nadie puede marcar "ausente" a mano -> 403', async () => esperar(await pedir('PATCH', `/api/consultorio/citas/${citaAtender}/estado`, 'tok-vet', { estado: 'ausente' }), 403));
+  await prueba('sin ficha -> 400', async () => esperar(await pedir('PATCH', `/api/consultorio/citas/${citaAtender}/estado`, 'tok-vet', { estado: 'atendida' }), 400, 'FICHA_REQUERIDA'));
+  await prueba('sin diagnóstico o sin tratamiento -> 400 y la cita NO cambia', async () => {
+    esperar(await pedir('PATCH', `/api/consultorio/citas/${citaAtender}/estado`, 'tok-vet', { estado: 'atendida', ficha: { diagnostico: '', tratamiento: 'reposo' } }), 400, 'DATOS_INVALIDOS');
+    esperar(await pedir('PATCH', `/api/consultorio/citas/${citaAtender}/estado`, 'tok-vet', { estado: 'atendida', ficha: { diagnostico: 'otitis', tratamiento: {} } }), 400);
+    assert.strictEqual((await pedir('GET', `/api/consultorio/citas/${citaAtender}`, 'tok-vet')).datos.estado, 'agendada');
+    assert.strictEqual(dao.fichas.length, 0);
+  });
+  await prueba('veterinario con ficha completa -> 200 atendida + ficha guardada', async () => {
+    const r = await pedir('PATCH', `/api/consultorio/citas/${citaAtender}/estado`, 'tok-vet', { estado: 'atendida', ficha: { diagnostico: 'Otitis leve', tratamiento: 'Gotas óticas 7 días', receta: 'Otomax' } });
+    esperar(r, 200);
+    assert.strictEqual(r.datos.estado, 'atendida');
+    assert.strictEqual(r.datos.ficha.veterinarioRut, '15555555-6');
+    assert.strictEqual(dao.fichas.length, 1);
+  });
+  await prueba('una atendida no se puede cancelar -> 409', async () => esperar(await pedir('PATCH', `/api/consultorio/citas/${citaAtender}/estado`, 'tok-vecino1', { estado: 'cancelada' }), 409, 'TRANSICION_INVALIDA'));
+
   console.log(`\n${ok} pruebas OK, ${fallos} con fallos`);
   app.close(); nucleo.close(); m1.close();
   process.exit(fallos ? 1 : 0);
