@@ -11,6 +11,8 @@ const estado = {
   fecha: new Date().toISOString().slice(0, 10),
   citas: [],
   citaActiva: null,
+  reprogFecha: new Date().toISOString().slice(0, 10),
+  reprogHora: '',
   animalBuscado: null,
   historial: [],
   mensaje: null
@@ -155,6 +157,30 @@ async function cambiarEstadoCita(cita, accion) {
   }
 }
 
+async function reprogramarCita(ev) {
+  ev.preventDefault();
+  const id = estado.citaActiva?.id || estado.citaActiva?._id;
+  if (!id) return avisar('error', 'Selecciona o abre una cita para reprogramar.');
+
+  const fecha = $('inp-reprog-fecha').value.trim();
+  const hora = $('inp-reprog-hora').value.trim();
+  if (!fecha || !hora) return avisar('error', 'Debes indicar la nueva fecha y hora.');
+
+  try {
+    await api(`/api/consultorio/citas/${encodeURIComponent(id)}/reprogramar`, {
+      metodo: 'PATCH',
+      cuerpo: { fecha, hora }
+    });
+    estado.citaActiva = { ...estado.citaActiva, fecha, hora, estado: 'reprogramada' };
+    estado.reprogFecha = fecha;
+    estado.reprogHora = hora;
+    estado.mensaje = { tipo: 'ok', msg: `Cita reprogramada para el ${fecha} a las ${hora}.` };
+    await cargarAgenda();
+  } catch (e) {
+    avisar('error', e.message);
+  }
+}
+
 async function registrarAtencion(ev) {
   ev.preventDefault();
   const diagnostico = $('inp-diagnostico').value.trim();
@@ -225,6 +251,20 @@ function renderAgenda(main) {
         class: 'primario',
         onclick: () => {
           estado.citaActiva = c;
+          estado.reprogFecha = c.fecha || estado.fecha;
+          estado.reprogHora = c.hora || '';
+          estado.vista = 'atencion';
+          if (c.animalId) buscarAnimal(c.animalId);
+          else render();
+        }
+      }));
+      tdAcc.appendChild(texto('button', 'Reprogramar', {
+        type: 'button',
+        class: 'secundario',
+        onclick: () => {
+          estado.citaActiva = c;
+          estado.reprogFecha = c.fecha || estado.fecha;
+          estado.reprogHora = c.hora || '';
           estado.vista = 'atencion';
           if (c.animalId) buscarAnimal(c.animalId);
           else render();
@@ -274,6 +314,30 @@ function renderAtencion(main) {
       onclick: () => cambiarEstadoCita(estado.citaActiva, 'completar')
     }));
     sec.appendChild(barraCita);
+
+    const formReprog = texto('form', '', { class: 'ficha', onsubmit: reprogramarCita });
+    formReprog.appendChild(texto('h3', 'Reprogramar cita'));
+
+    const filaReprog = texto('div', '', { class: 'fila-controles' });
+    filaReprog.appendChild(texto('label', 'Nueva fecha', { for: 'inp-reprog-fecha' }));
+    filaReprog.appendChild(texto('input', '', {
+      id: 'inp-reprog-fecha',
+      type: 'date',
+      value: estado.reprogFecha || estado.citaActiva.fecha || estado.fecha,
+      onchange: (ev) => { estado.reprogFecha = ev.target.value; }
+    }));
+
+    filaReprog.appendChild(texto('label', 'Nueva hora', { for: 'inp-reprog-hora' }));
+    filaReprog.appendChild(texto('input', '', {
+      id: 'inp-reprog-hora',
+      type: 'time',
+      value: estado.reprogHora || estado.citaActiva.hora || '',
+      onchange: (ev) => { estado.reprogHora = ev.target.value; }
+    }));
+
+    filaReprog.appendChild(texto('button', 'Guardar reprogramación', { type: 'submit', class: 'primario' }));
+    formReprog.appendChild(filaReprog);
+    sec.appendChild(formReprog);
   }
 
   const formBusq = texto('form', '', {
