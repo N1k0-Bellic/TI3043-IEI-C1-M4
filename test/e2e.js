@@ -229,6 +229,44 @@ function diaHabil(dias, tz) {
     esperar(await pedir('POST', '/api/consultorio/citas', 'tok-func', { animalId: 'SIM-000099', solicitanteRut: '13333333-9' }), 409, 'RESPONSABLE_NO_REGISTRADO');
   });
 
+  console.log('\nCV-02 Cancelar (RF-04, RN-07)');
+  await prueba('un vecino no puede tocar la cita de otro -> 403', async () => esperar(await pedir('PATCH', `/api/consultorio/citas/${citaId}/estado`, 'tok-vecino2', { estado: 'cancelada' }), 403));
+  await prueba('con menos de 24 h -> 409 CANCELACION_FUERA_DE_PLAZO', async () => {
+    const ini = new Date(Date.now() + 2 * 3600000);
+    await dao.insertarCita({ citaId: 'C-CERCA', animalId: 'SIM-000001', solicitanteRut: '11111111-1', veterinarioId: cfg.veterinarios[0], inicio: iso(ini), fin: iso(new Date(ini.getTime() + 1800000)), motivo: '', estado: 'agendada', activa: true, creada: iso(new Date()), actualizada: iso(new Date()), historial: [] });
+    esperar(await pedir('PATCH', '/api/consultorio/citas/C-CERCA/estado', 'tok-vecino1', { estado: 'cancelada' }), 409, 'CANCELACION_FUERA_DE_PLAZO');
+  });
+  await prueba('cita de demostración: cancelar siempre da 409 (verificación repetible)', async () => {
+    esperar(await pedir('PATCH', '/api/consultorio/citas/C-DEMO-0001/estado', 'tok-vecino1', { estado: 'cancelada' }), 409);
+    esperar(await pedir('PATCH', '/api/consultorio/citas/C-DEMO-0001/estado', 'tok-vecino1', { estado: 'cancelada' }), 409);
+  });
+  await prueba('con más de 24 h -> 200 cancelada y el bloque queda libre al instante', async () => {
+    const r = await pedir('PATCH', `/api/consultorio/citas/${citaId}/estado`, 'tok-vecino1', { estado: 'cancelada' });
+    esperar(r, 200);
+    assert.strictEqual(r.datos.estado, 'cancelada');
+    const h = await pedir('GET', `/api/consultorio/horarios?fecha=${fechaFutura}&veterinarioId=${bloque.veterinarioId}&limit=100`, 'tok-vecino1');
+    assert.ok(h.datos.datos.some((b) => b.inicio === bloque.inicio), 'el bloque no se liberó');
+    esperar(await pedir('POST', '/api/consultorio/citas', 'tok-vecino2', { animalId: 'SIM-000003', inicio: bloque.inicio, veterinarioId: bloque.veterinarioId }), 201);
+  });
+  await prueba('una cancelada no vuelve a cambiar -> 409 TRANSICION_INVALIDA', async () => esperar(await pedir('PATCH', `/api/consultorio/citas/${citaId}/estado`, 'tok-vecino1', { estado: 'confirmada' }), 409, 'TRANSICION_INVALIDA'));
+  await prueba('estado desconocido -> 400', async () => esperar(await pedir('PATCH', `/api/consultorio/citas/${citaId}/estado`, 'tok-vecino1', { estado: 'volando' }), 400, 'ESTADO_INVALIDO'));
+  await prueba('agendada -> confirmada -> reagendar no corresponde si está confirmada', async () => {
+    const n = await pedir('POST', '/api/consultorio/citas', 'tok-vecino1', { animalId: 'SIM-000001' });
+    const id = n.datos.citaId;
+    esperar(await pedir('PATCH', `/api/consultorio/citas/${id}/estado`, 'tok-vecino1', { estado: 'confirmada' }), 200);
+    esperar(await pedir('PATCH', `/api/consultorio/citas/${id}/horario`, 'tok-vecino1', { inicio: bloque.inicio }), 409, 'TRANSICION_INVALIDA');
+  });
+  await prueba('reagendar una cita agendada a otro bloque libre -> 200', async () => {
+    const f2 = diaHabil(5, tz);
+    const hs = await pedir('GET', `/api/consultorio/horarios?fecha=${f2}&limit=100`, 'tok-vecino1');
+    const b2 = hs.datos.datos[0];
+    const n = await pedir('POST', '/api/consultorio/citas', 'tok-vecino2', { animalId: 'SIM-000003', inicio: b2.inicio, veterinarioId: b2.veterinarioId });
+    const b3 = hs.datos.datos[1];
+    const r = await pedir('PATCH', `/api/consultorio/citas/${n.datos.citaId}/horario`, 'tok-vecino2', { inicio: b3.inicio });
+    esperar(r, 200);
+    assert.strictEqual(r.datos.inicio, b3.inicio);
+  });
+
   console.log(`\n${ok} pruebas OK, ${fallos} con fallos`);
   app.close(); nucleo.close(); m1.close();
   process.exit(fallos ? 1 : 0);
