@@ -125,7 +125,15 @@ function crearRutas(ctx) {
     const vetPedido = body.veterinarioId === undefined ? null : veterinarioValido(texto(body.veterinarioId, 'veterinarioId', { obligatorio: true, max: 20 }));
     const bloque = body.inicio === undefined ? null : validarBloque(body.inicio);
 
-    const solicitanteRut = usuario.rut;
+    let solicitanteRut = usuario.rut;
+    if (usuario.perfil === 'funcionario') {
+      // El funcionario agenda a nombre de un tutor: debe indicarlo y la persona debe existir en el núcleo
+      if (typeof body.solicitanteRut !== 'string' || !rutValido(body.solicitanteRut)) {
+        throw new HttpError(400, 'RUT_INVALIDO', 'solicitanteRut es obligatorio para el funcionario (formato 12345678-9)');
+      }
+      solicitanteRut = body.solicitanteRut.trim().toUpperCase();
+      await nucleo.usuario(solicitanteRut, token);
+    }
 
     // 2) RF-02: el animal debe existir en el M1 y no estar fallecido. Si el M1 no responde -> 503 y no se crea nada (RNF-04)
     const animal = await m1.animal(animalId, token);
@@ -207,7 +215,7 @@ function crearRutas(ctx) {
     barrido: async () => 0, // provisional: el barrido real llega con las ausentes automáticas
     rutas: [
       { metodo: 'GET', ruta: `${P}/horarios`, perfiles: TODOS, manejador: horarios },
-      { metodo: 'POST', ruta: `${P}/citas`, perfiles: DUENOS, manejador: crearCita }
+      { metodo: 'POST', ruta: `${P}/citas`, perfiles: SOLICITANTES, manejador: crearCita }
     ]
   };
 }
