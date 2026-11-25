@@ -135,6 +135,24 @@ async function buscarAnimal(codigo) {
   }
 }
 
+async function cambiarEstadoCita(cita, accion) {
+  const id = cita?.id || cita?._id;
+  if (!id) return avisar('error', 'No se encontró el identificador de la cita.');
+  try {
+    await api(`/api/consultorio/citas/${encodeURIComponent(id)}/${accion}`, { metodo: 'PATCH' });
+    if (estado.citaActiva && (estado.citaActiva.id === id || estado.citaActiva._id === id)) {
+      estado.citaActiva = { ...estado.citaActiva, estado: accion === 'ausente' ? 'ausente' : 'completada' };
+    }
+    estado.mensaje = {
+      tipo: 'ok',
+      msg: accion === 'ausente' ? 'Cita marcada como ausente.' : 'Atención de cita completada.'
+    };
+    await cargarAgenda();
+  } catch (e) {
+    avisar('error', e.message);
+  }
+}
+
 function renderAgenda(main) {
   const sec = texto('section', '', { class: 'tarjeta' });
   const cab = texto('div', '', { class: 'barra-superior' });
@@ -160,7 +178,7 @@ function renderAgenda(main) {
     const tabla = texto('table', '', { class: 'tabla' });
     const thead = texto('thead');
     const trHead = texto('tr');
-    ['Hora', 'Animal', 'Responsable', 'Estado', 'Acción'].forEach((h) => trHead.appendChild(texto('th', h)));
+    ['Hora', 'Animal', 'Responsable', 'Estado', 'Acciones'].forEach((h) => trHead.appendChild(texto('th', h)));
     thead.appendChild(trHead);
     tabla.appendChild(thead);
 
@@ -171,7 +189,8 @@ function renderAgenda(main) {
       tr.appendChild(texto('td', c.animalNombre || c.animalId || '-'));
       tr.appendChild(texto('td', c.responsableRut || c.tutorRut || '-'));
       tr.appendChild(texto('td', texto('span', c.estado || 'programada', { class: `badge estado-${c.estado || 'programada'}` })));
-      const tdAcc = texto('td');
+
+      const tdAcc = texto('td', '', { class: 'fila-controles' });
       tdAcc.appendChild(texto('button', 'Atender', {
         type: 'button',
         class: 'primario',
@@ -181,6 +200,16 @@ function renderAgenda(main) {
           if (c.animalId) buscarAnimal(c.animalId);
           else render();
         }
+      }));
+      tdAcc.appendChild(texto('button', 'Marcar ausente', {
+        type: 'button',
+        class: 'secundario',
+        onclick: () => cambiarEstadoCita(c, 'ausente')
+      }));
+      tdAcc.appendChild(texto('button', 'Completar atención', {
+        type: 'button',
+        class: 'primario',
+        onclick: () => cambiarEstadoCita(c, 'completar')
       }));
       tr.appendChild(tdAcc);
       tbody.appendChild(tr);
@@ -201,6 +230,22 @@ function renderAtencion(main) {
     onclick: () => { estado.vista = 'agenda'; render(); }
   }));
   sec.appendChild(top);
+
+  if (estado.citaActiva) {
+    const barraCita = texto('div', '', { class: 'fila-controles' });
+    barraCita.appendChild(texto('span', `Cita seleccionada: ${estado.citaActiva.hora || '-'} · Estado: ${estado.citaActiva.estado || 'programada'}`));
+    barraCita.appendChild(texto('button', 'Marcar ausente', {
+      type: 'button',
+      class: 'secundario',
+      onclick: () => cambiarEstadoCita(estado.citaActiva, 'ausente')
+    }));
+    barraCita.appendChild(texto('button', 'Completar atención', {
+      type: 'button',
+      class: 'primario',
+      onclick: () => cambiarEstadoCita(estado.citaActiva, 'completar')
+    }));
+    sec.appendChild(barraCita);
+  }
 
   const formBusq = texto('form', '', {
     class: 'fila-controles',
