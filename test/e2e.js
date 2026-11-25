@@ -293,6 +293,33 @@ function diaHabil(dias, tz) {
   });
   await prueba('una atendida no se puede cancelar -> 409', async () => esperar(await pedir('PATCH', `/api/consultorio/citas/${citaAtender}/estado`, 'tok-vecino1', { estado: 'cancelada' }), 409, 'TRANSICION_INVALIDA'));
 
+  console.log('\nCV-04 Historial clínico (RF-07, RNF-02)');
+  await prueba('tutor ve el historial de su animal -> 200 con la ficha', async () => {
+    const r = await pedir('GET', '/api/consultorio/animales/SIM-000001/historial', 'tok-vecino1');
+    esperar(r, 200);
+    assert.strictEqual(r.datos.total, 1);
+    assert.strictEqual(r.datos.datos[0].diagnostico, 'Otitis leve');
+  });
+  await prueba('otro vecino -> 403', async () => esperar(await pedir('GET', '/api/consultorio/animales/SIM-000001/historial', 'tok-vecino2'), 403));
+  await prueba('funcionario solo ve agenda -> 403 en historial', async () => esperar(await pedir('GET', '/api/consultorio/animales/SIM-000001/historial', 'tok-func'), 403, 'PERFIL_NO_AUTORIZADO'));
+  await prueba('veterinario -> 200', async () => esperar(await pedir('GET', '/api/consultorio/animales/SIM-000001/historial', 'tok-vet'), 200));
+  await prueba('animal que no existe -> 404', async () => esperar(await pedir('GET', '/api/consultorio/animales/SIM-777777/historial', 'tok-vet'), 404));
+  await prueba('la bitácora registró usuario, fecha, hora y acción (solo jefatura/admin la leen)', async () => {
+    esperar(await pedir('GET', '/api/consultorio/bitacora', 'tok-vecino1'), 403);
+    const r = await pedir('GET', '/api/consultorio/bitacora?limit=100', 'tok-jef');
+    esperar(r, 200);
+    const consulta = r.datos.datos.find((b) => b.accion === 'HISTORIAL_CONSULTA' && b.rut === '11111111-1');
+    assert.ok(consulta && consulta.fecha && consulta.perfil === 'vecino');
+    assert.ok(r.datos.datos.some((b) => b.accion === 'FICHA_CREAR'));
+  });
+  await prueba('tutor solo ve SUS citas; funcionario ve la agenda general', async () => {
+    const v = await pedir('GET', '/api/consultorio/citas?limit=100', 'tok-vecino2');
+    assert.ok(v.datos.datos.every((c) => c.solicitanteRut === '12222222-5'));
+    const f = await pedir('GET', '/api/consultorio/citas?limit=100', 'tok-func');
+    assert.ok(f.datos.total > v.datos.total);
+    assert.ok(f.datos.datos.every((c) => !('diagnostico' in c)), 'la agenda no debe traer datos clínicos');
+  });
+
   console.log(`\n${ok} pruebas OK, ${fallos} con fallos`);
   app.close(); nucleo.close(); m1.close();
   process.exit(fallos ? 1 : 0);
