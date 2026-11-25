@@ -257,6 +257,56 @@ function crearRutas(ctx) {
     return { status: 200, body: publica(cita) };
   }
 
+  // ---------- PATCH /citas/{citaId}/estado (CV-02) ----------
+  async function cambiarEstado({ usuario, params, body }) {
+    const id = idDe(params.citaId, 'citaId');
+    const destino = body.estado;
+    if (typeof destino !== 'string' || !ESTADOS.includes(destino)) {
+      throw new HttpError(400, 'ESTADO_INVALIDO', `estado debe ser uno de: ${ESTADOS.join(', ')}`);
+    }
+    // RN-08: "ausente" lo asigna solo el sistema; "atendida" solo el veterinario municipal
+    if (destino === 'ausente') {
+      throw new HttpError(403, 'PERFIL_NO_AUTORIZADO', 'El estado "ausente" lo asigna solo el sistema (RN-08)');
+    }
+    if (destino === 'atendida' && usuario.perfil !== 'veterinario') {
+      throw new HttpError(403, 'PERFIL_NO_AUTORIZADO', 'Solo el veterinario municipal puede marcar una cita como atendida (RN-08)');
+    }
+    if (destino !== 'atendida' && !SOLICITANTES.includes(usuario.perfil)) {
+      throw new HttpError(403, 'PERFIL_NO_AUTORIZADO', `El perfil ${usuario.perfil} no puede pasar una cita a "${destino}"`);
+    }
+
+    await barrido();
+    const cita = await dao.obtenerCita(id);
+    if (!cita) throw new HttpError(404, 'CITA_NO_ENCONTRADA', `No existe la cita ${id}`);
+    if (DUENOS.includes(usuario.perfil) && !esSuya(cita, usuario)) {
+      throw new HttpError(403, 'PERFIL_NO_AUTORIZADO', 'Esa cita no es suya');
+    }
+    if (!TRANSICIONES[cita.estado].includes(destino)) {
+      throw new HttpError(409, 'TRANSICION_INVALIDA', `No se puede pasar una cita "${cita.estado}" a "${destino}"`);
+    }
+
+    const ahora = ctx.ahora();
+
+    if (destino === 'cancelada') {
+      // RN-07: al menos 24 horas de anticipación
+      const faltan = new Date(cita.inicio).getTime() - ahora.getTime();
+      if (faltan < cfg.plazoCancelacionHoras * 60 * MIN) {
+        throw new HttpError(409, 'CANCELACION_FUERA_DE_PLAZO', `Solo se puede cancelar con al menos ${cfg.plazoCancelacionHoras} horas de anticipación (RN-07)`);
+      }
+    }
+
+    const evento = { estado: destino, fecha: iso(ahora), por: usuario.rut };
+    const cambios = { estado: destino, activa: ACTIVAS.includes(destino) };
+
+    const nueva = await dao.actualizarCita(id, [cita.estado], cambios, evento, iso(ahora));
+    if (!nueva) {
+      throw new HttpError(409, 'CONFLICTO_DE_ESTADO', 'La cita cambió mientras se procesaba; vuelva a consultarla');
+    }
+
+    await bitacora(usuario, `CITA_${destino.toUpperCase()}`, id);
+    return { status: 200, body: publica(nueva) };
+  }
+
   const P = '/api/consultorio';
   return {
     barrido: async () => 0, // provisional: el barrido real llega con las ausentes automáticas
@@ -264,7 +314,8 @@ function crearRutas(ctx) {
       { metodo: 'GET', ruta: `${P}/horarios`, perfiles: TODOS, manejador: horarios },
       { metodo: 'POST', ruta: `${P}/citas`, perfiles: SOLICITANTES, manejador: crearCita },
       { metodo: 'GET', ruta: `${P}/citas`, perfiles: TODOS, manejador: listarCitas },
-      { metodo: 'GET', ruta: `${P}/citas/:citaId`, perfiles: TODOS, manejador: obtenerCita }
+      { metodo: 'GET', ruta: `${P}/citas/:citaId`, perfiles: TODOS, manejador: obtenerCita },
+      { metodo: 'PATCH', ruta: `${P}/citas/:citaId/estado`, perfiles: SOLICITANTES, manejador: cambiarEstado }
     ]
   };
 }
