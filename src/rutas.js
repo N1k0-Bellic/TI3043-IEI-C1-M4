@@ -219,3 +219,36 @@ module.exports = { crearRutas, ESTADOS, TRANSICIONES };
     ]
   };
 }
+// [PENDIENTE] contenido de commits anteriores no disponible (reconstruido desde parche)
+    return { status: 200, body: { marcadas: n, hora: iso(ctx.ahora()) } };
+  }
+
+  // ---------- GET /animales/{animalId}/historial (CV-04) ----------
+  async function historial({ usuario, token, params, query }) {
+    const animalId = idDe(params.animalId, 'animalId');
+    // El M1 confirma que el animal existe (404) y, para tutores, que es suyo (403)
+    const animal = await m1.animal(animalId, token);
+    if (DUENOS.includes(usuario.perfil)) {
+      const resp = responsableDe(animal);
+      if (!resp || resp.toUpperCase() !== usuario.rut.toUpperCase()) {
+        throw new HttpError(403, 'PERFIL_NO_AUTORIZADO', 'Solo puede ver el historial de sus propios animales');
+      }
+    }
+    const { page, limit, skip } = paginacion(query);
+    const { total, datos } = await dao.listarFichas(animalId, skip, limit);
+    await bitacora(usuario, 'HISTORIAL_CONSULTA', animalId);
+    return { status: 200, body: respuestaPaginada(datos, total, page, limit) };
+  }
+
+  // ---------- GET /bitacora ----------
+  async function verBitacora({ query }) {
+    const { page, limit, skip } = paginacion(query);
+// [PENDIENTE] contenido de commits anteriores no disponible (reconstruido desde parche)
+      { metodo: 'GET', ruta: `${P}/citas/:citaId`, perfiles: TODOS, manejador: obtenerCita },
+      { metodo: 'PATCH', ruta: `${P}/citas/:citaId/estado`, perfiles: ['vecino', 'comunitario', 'funcionario', 'veterinario'], manejador: cambiarEstado },
+      { metodo: 'PATCH', ruta: `${P}/citas/:citaId/horario`, perfiles: SOLICITANTES, manejador: reagendar },
+      // RF-07: el historial clínico es solo del veterinario y del tutor/responsable (funcionario, jefatura y admin: 403)
+      { metodo: 'GET', ruta: `${P}/animales/:animalId/historial`, perfiles: ['vecino', 'comunitario', 'veterinario'], manejador: historial },
+      { metodo: 'GET', ruta: `${P}/bitacora`, perfiles: ['jefatura', 'admin'], manejador: verBitacora }
+    ]
+  };
